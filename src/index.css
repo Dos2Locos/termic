@@ -26,6 +26,11 @@
   --color-sel:       rgba(217, 119, 87, 0.20);
   --color-accent:    #d97757;
   --color-accent-soft: rgba(217, 119, 87, 0.22);
+  /* Darker accent for button surfaces. Pure accent looks fine on
+     small icons + 1px borders but reads thin/light when used as a
+     button background - especially on the brighter themes (cobalt).
+     White text + accent-deep should hit ≥4.5:1 contrast. */
+  --color-accent-deep: #b35e3f;
   --color-ok:        #4caf50;
   --color-warn:      #f0b13a;
   --color-err:       #ef5350;
@@ -95,6 +100,7 @@
     --color-sel:         rgba(217, 119, 87, 0.18);
     --color-accent:      #c25e3d;       /* shifted slightly for contrast on light bg */
     --color-accent-soft: rgba(194, 94, 61, 0.20);
+    --color-accent-deep: #a04a2c;       /* button bg on cream surfaces */
     color-scheme: light;
   }
 
@@ -119,6 +125,10 @@
     --color-sel:         rgba(102, 196, 255, 0.22);
     --color-accent:      #66c4ff;   /* bright cobalt sky */
     --color-accent-soft: rgba(102, 196, 255, 0.22);
+    /* Cobalt's bright sky-blue looks washed-out as a button bg
+       against the navy panels. Drop down a couple of stops into
+       a deep azure that still reads cobalt-family. */
+    --color-accent-deep: #1f6fa8;
     color-scheme: dark;
   }
 
@@ -142,6 +152,7 @@
     --color-sel:         rgba(63, 185, 80, 0.20);
     --color-accent:      #3fb950;       /* calmer green - reads matrix without burning the retina */
     --color-accent-soft: rgba(63, 185, 80, 0.20);
+    --color-accent-deep: #2a7a36;       /* deeper phosphor for button surfaces */
     color-scheme: dark;
   }
 
@@ -163,6 +174,7 @@
     --color-sel:         rgba(38, 139, 210, 0.22);
     --color-accent:      #cb4b16;       /* solarized orange */
     --color-accent-soft: rgba(203, 75, 22, 0.22);
+    --color-accent-deep: #9d3a11;       /* deeper solarized orange for buttons */
     color-scheme: dark;
   }
   ::-webkit-scrollbar { width: 10px; height: 10px; }

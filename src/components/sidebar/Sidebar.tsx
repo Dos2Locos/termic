@@ -345,17 +345,11 @@ export function Sidebar() {
                                   repo
                                 </span>
                               )}
-                              {/* Sandboxed badge - visible state that this
-                                  workspace's agent runs under seatbelt +
-                                  the project's allowed-hosts proxy. The pin
-                                  is permanent; the badge is informational. */}
-                              {w.sandbox_enabled && (
-                                <Tip content="Sandboxed - filesystem + network restricted by project config">
-                                  <span className="shrink-0 text-[var(--color-ok)] opacity-80">
-                                    <Shield className="h-3.5 w-3.5" />
-                                  </span>
-                                </Tip>
-                              )}
+                              {/* Sandbox indicator moved into the trailing
+                                  action button below — the icon IS the
+                                  control, so there's exactly one shield
+                                  per row (filled-green when caged, dim
+                                  outline when open). */}
                               {/* Work-done check — small accent ✓ when the
                                   agent has settled (output stopped). Gated
                                   on `settledHighlight` pref (Settings →
@@ -383,30 +377,39 @@ export function Sidebar() {
                           )
                         )}
                         {!compact && !isRenaming && (
-                          // Trailing actions only — moon moved next to the name.
+                          // Trailing actions: each button gets a fixed
+                          // 22x22 slot (flex-centered) so the icons sit
+                          // at identical X/Y regardless of whether the
+                          // glyph is a thin Plus, full Shield, or
+                          // filled Shield. Without the slot, lucide's
+                          // varying stroke widths produced "optical
+                          // misalignment" across rows.
                           <div className="ml-auto flex shrink-0 items-center gap-0.5">
-                            {/* Edit sandbox: only on regular worktrees (the
-                                repo-root pseudo-workspace doesn't sandbox).
-                                Saves SIGKILL any running agent for this ws -
-                                dialog warns + the existing Restart overlay
-                                lets the user relaunch under the new profile. */}
-                            {!w.is_repo_root && (
-                              <Tip content="Edit sandbox">
-                                <button
-                                  className="rounded p-0.5 text-[var(--color-fg-faint)] opacity-0 hover:bg-[var(--color-bg-3)] hover:text-[var(--color-fg)] group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    useUI.getState().openSandbox(w.id);
-                                  }}
-                                ><Shield className="h-4 w-4" /></button>
-                              </Tip>
-                            )}
+                            {/* Archive: hover-only. Sits to the LEFT of
+                                the sandbox indicator so the shield is
+                                the always-visible rightmost anchor and
+                                rows don't visually shift between hover/
+                                non-hover states. */}
                             <Tip content="Archive workspace">
                               <button
-                                className="rounded p-0.5 text-[var(--color-fg-faint)] opacity-0 hover:bg-[var(--color-bg-3)] hover:text-[var(--color-err)] group-hover:opacity-100 transition-opacity"
+                                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[var(--color-fg-faint)] opacity-0 hover:bg-[var(--color-bg-3)] hover:text-[var(--color-err)] group-hover:opacity-100 transition-opacity"
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  if (!confirm(`Archive workspace "${w.name}"? The worktree will be removed from git.`)) return;
+                                  const ok = await useUI.getState().askConfirm({
+                                    title: `Archive "${w.name}"?`,
+                                    // Repo-root entries aren't worktrees -
+                                    // archiving just drops the Termic row;
+                                    // the actual checkout on disk is left
+                                    // alone. Worktree workspaces get the
+                                    // full warning (their directory + its
+                                    // contents really are removed).
+                                    message: w.is_repo_root
+                                      ? "This removes the Termic entry for the project's main checkout. The repo on disk is NOT touched — you can re-open it any time. Any agent running here will be terminated."
+                                      : "The git worktree will be removed and any running agent terminated. This can't be undone from inside Termic — the branch survives in git but the local worktree directory and its contents (node_modules, .venv, untracked files) are gone.",
+                                    confirmLabel: w.is_repo_root ? "Remove entry" : "Archive",
+                                    destructive: true,
+                                  });
+                                  if (!ok) return;
                                   // Show a blocking overlay while the
                                   // archive runs — fs::remove_dir_all on a
                                   // .venv / node_modules takes seconds and
@@ -421,6 +424,33 @@ export function Sidebar() {
                                   finally { setBusy(null); }
                                 }}
                               ><Archive className="h-4 w-4" /></button>
+                            </Tip>
+                            {/* Sandbox indicator — always visible, rightmost
+                                anchor of the row. Click opens the editor.
+                                Filled green = caged, dim outline = open.
+                                No opacity dance: faint stays faint, looks
+                                stable instead of "loading". Shown on
+                                repo-root workspaces too — the kernel
+                                cage is just as applicable to a main
+                                checkout as to a worktree. */}
+                            <Tip content={w.sandbox_enabled ? "Sandbox on" : "Sandbox off"}>
+                              <button
+                                className={cn(
+                                  "flex h-[22px] w-[22px] items-center justify-center rounded transition-colors hover:bg-[var(--color-bg-3)]",
+                                  w.sandbox_enabled
+                                    ? "text-[var(--color-ok)]"
+                                    : "text-[var(--color-fg-faint)]",
+                                )}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  useUI.getState().openSandbox(w.id);
+                                }}
+                              >
+                                <Shield
+                                  className="h-[15px] w-[15px]"
+                                  fill={w.sandbox_enabled ? "currentColor" : "none"}
+                                />
+                              </button>
                             </Tip>
                           </div>
                         )}

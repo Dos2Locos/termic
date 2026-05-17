@@ -42,11 +42,6 @@ export const workspaceSetSandbox = (
   id, enabled,
   rwPaths, denyPaths, allowedHosts,
 });
-/** Probe macOS PATH for tinyproxy. Used at startup to decide whether
- *  to show the "install tinyproxy" banner when any workspace is or
- *  will be sandboxed. Cheap (one `which` shell-out). */
-export const sandboxTinyproxyAvailable = () =>
-  invoke<boolean>("sandbox_tinyproxy_available");
 /** Newest-first list of macOS Sandbox denial lines from `log show` for
  *  the given workspace, last `minutes` minutes (default 10). Surfaces
  *  what got blocked when `npm install` etc. silently failed in a

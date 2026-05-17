@@ -3,6 +3,17 @@
 
 import { create } from "zustand";
 
+export interface ConfirmRequest {
+  title: string;
+  message: string;
+  /** Action button label. Default: "Confirm". */
+  confirmLabel?: string;
+  cancelLabel?: string;
+  /** Renders the confirm button red when true - use for archive /
+   *  delete / "ripping the cage" style actions. */
+  destructive?: boolean;
+}
+
 interface UIState {
   // dialog visibility
   newProjectOpen: boolean;
@@ -18,6 +29,10 @@ interface UIState {
    *  unavoidably-synchronous IPC calls like `workspace_archive` that take
    *  several seconds (git worktree remove + rm -rf). */
   busyMessage: string | null;
+  /** Active confirm prompt, if any. null = nothing pending. The
+   *  resolve callback fires with the user's choice when the modal
+   *  closes; the ConfirmDialog component reads this and renders. */
+  confirm: { req: ConfirmRequest; resolve: (ok: boolean) => void } | null;
 
   // actions
   openNewProject: () => void;
@@ -31,6 +46,11 @@ interface UIState {
   openSandbox: (wsId: string) => void;
   closeSandbox: () => void;
   setBusy: (msg: string | null) => void;
+  /** Open the global confirm modal. Returns a Promise that resolves
+   *  to true (user confirmed) or false (cancelled / dismissed). Drop-in
+   *  replacement for `window.confirm()` with our own chrome + theming. */
+  askConfirm: (req: ConfirmRequest) => Promise<boolean>;
+  resolveConfirm: (ok: boolean) => void;
 }
 
 export const useUI = create<UIState>(set => ({
@@ -40,6 +60,7 @@ export const useUI = create<UIState>(set => ({
   reviewForWsId: null,
   sandboxForWsId: null,
   busyMessage: null,
+  confirm: null,
 
   openNewProject:    () => set({ newProjectOpen: true }),
   closeNewProject:   () => set({ newProjectOpen: false }),
@@ -52,4 +73,11 @@ export const useUI = create<UIState>(set => ({
   openSandbox:       (wsId) => set({ sandboxForWsId: wsId }),
   closeSandbox:      () => set({ sandboxForWsId: null }),
   setBusy:           (msg) => set({ busyMessage: msg }),
+  askConfirm: (req) =>
+    new Promise<boolean>(resolve => set({ confirm: { req, resolve } })),
+  resolveConfirm: (ok) => {
+    const c = useUI.getState().confirm;
+    if (c) c.resolve(ok);
+    set({ confirm: null });
+  },
 }));

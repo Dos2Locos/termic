@@ -4,7 +4,8 @@
 // kill the running agent would keep its OLD profile's permissions,
 // which is exactly the thing we're trying to enforce against.
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { TextareaHTMLAttributes } from "react";
 import { useUI } from "@/store/ui";
 import { useApp } from "@/store/app";
 import { AppDialog } from "@/components/ui/Dialog";
@@ -138,9 +139,12 @@ export function WorkspaceSandboxDialog() {
       // body scrolls when content overflows (sandbox dialog has more
       // sections than other dialogs - editors, denies panel, test
       // panel, restart warning all stack up).
-      className="max-w-2xl max-h-[85vh] overflow-hidden"
+      className="max-w-4xl max-h-[90vh] overflow-hidden text-[13px]"
     >
-      <div className="flex max-h-[calc(85vh-7rem)] flex-col gap-5 overflow-y-auto pr-1">
+      {/* Outer column: body scrolls; footer is shrink-0 so it stays
+          pinned at the bottom of the dialog regardless of scroll. */}
+      <div className="flex max-h-[calc(90vh-7rem)] flex-col">
+        <div className="flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
         {/* On/off panel. Big, color-coded, unambiguous - the prior
             "Unsandboxed" checkbox was a double-negative trap: users
             saw the box checked and assumed the cage was ON. State now
@@ -160,12 +164,13 @@ export function WorkspaceSandboxDialog() {
                 "h-5 w-5 " +
                 (enabled ? "text-[var(--color-ok)]" : "text-[var(--color-err)]")
               }
+              fill={enabled ? "currentColor" : "none"}
             />
             <div className="flex flex-col">
-              <span className="text-[14px] font-semibold text-[var(--color-fg)]">
+              <span className="text-[14.5px] font-semibold text-[var(--color-fg)]">
                 Sandbox is {enabled ? "ON" : "OFF"}
               </span>
-              <span className="text-[12px] text-[var(--color-fg-dim)]">
+              <span className="text-[12.5px] text-[var(--color-fg-dim)]">
                 {enabled
                   ? "Agent runs under seatbelt + allowed-hosts proxy."
                   : "Agent has full filesystem + network access."}
@@ -184,7 +189,7 @@ export function WorkspaceSandboxDialog() {
             permission prompts because the seatbelt is the real boundary -
             users should know this is happening, not stumble onto it. */}
         {enabled && (
-          <div className="flex items-start gap-2 rounded-md border border-[var(--color-ok)]/25 bg-[var(--color-ok)]/10 px-3 py-2 text-[12.5px] text-[var(--color-fg-dim)]">
+          <div className="flex items-start gap-2 rounded-md border border-[var(--color-ok)]/25 bg-[var(--color-ok)]/10 px-3 py-2 text-[13px] text-[var(--color-fg-dim)]">
             <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-ok)]" />
             <span>
               <b className="text-[var(--color-fg)]">YOLO auto-on inside the cage.</b>{" "}
@@ -195,28 +200,11 @@ export function WorkspaceSandboxDialog() {
           </div>
         )}
 
-        {/* Built-in defaults summary. Helps the user understand they
-            don't have to list every common thing - workspace path,
-            agent dirs, github, npm, etc. are already on. */}
-        <details className="rounded-md border border-[var(--color-border-soft)] bg-[var(--color-bg-1)]/50 px-3 py-2 text-[12.5px] text-[var(--color-fg-dim)]">
-          <summary className="cursor-pointer select-none font-medium text-[var(--color-fg)]">
-            Built-in defaults (always on when sandboxed)
-          </summary>
-          <div className="mt-2 grid gap-2">
-            <div>
-              <span className="text-[var(--color-fg-faint)]">Writable:</span>{" "}
-              workspace path · <code className="mono">~/.claude</code> · <code className="mono">~/.gemini</code> · <code className="mono">~/.codex</code> · <code className="mono">~/.npm</code> · <code className="mono">~/.cache</code> · <code className="mono">~/.cargo/registry</code> · <code className="mono">~/Library/Caches</code> · <code className="mono">/private/tmp</code> · TMPDIR
-            </div>
-            <div>
-              <span className="text-[var(--color-fg-faint)]">Always denied:</span>{" "}
-              <code className="mono">~/.ssh</code> · <code className="mono">~/.aws</code> · <code className="mono">~/.gnupg</code> · <code className="mono">~/.netrc</code> · <code className="mono">~/.docker/config.json</code> · <code className="mono">~/.kube</code> · <code className="mono">~/.config/gh/hosts.yml</code> · macOS Keychains
-            </div>
-            <div>
-              <span className="text-[var(--color-fg-faint)]">Allowed hosts:</span>{" "}
-              vendor API for {ws?.cli ?? "this CLI"} · github · npmjs · pypi · crates.io · CA OCSP
-            </div>
-          </div>
-        </details>
+        {/* Built-in defaults moved inline under each field below -
+            the standalone <details> made users miss what was already
+            covered, leading to redundant entries in the "Extra"
+            textareas. Always-visible inline = "you don't need to
+            list this; it's covered." */}
 
         {/* Presets - clobber the three textareas with a known-good
             starting point. User can still edit afterwards. The
@@ -224,7 +212,7 @@ export function WorkspaceSandboxDialog() {
             because the project's current defaults are user-owned
             (vs the bundled Presets which are app-owned). */}
         {enabled && (
-          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+          <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="text-[var(--color-fg-faint)]">Preset:</span>
             {SANDBOX_PRESETS.map(p => (
               <button
@@ -235,7 +223,7 @@ export function WorkspaceSandboxDialog() {
                   setDenyText(p.denyPaths.join("\n"));
                   setHostsText(p.allowedHosts.join("\n"));
                 }}
-                className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[12px] text-[var(--color-fg-dim)] hover:border-[var(--color-accent-soft)] hover:text-[var(--color-fg)]"
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[13px] text-[var(--color-fg-dim)] hover:border-[var(--color-accent-soft)] hover:text-[var(--color-fg)]"
               >
                 {p.label}
               </button>
@@ -249,7 +237,7 @@ export function WorkspaceSandboxDialog() {
                   setDenyText((project.sandbox_deny_paths ?? []).join("\n"));
                   setHostsText((project.sandbox_allowed_hosts ?? []).join("\n"));
                 }}
-                className="rounded-md border border-[var(--color-accent-soft)] bg-[var(--color-bg)] px-2 py-0.5 text-[12px] text-[var(--color-fg-dim)] hover:border-[var(--color-accent)] hover:text-[var(--color-fg)]"
+                className="rounded-md border border-[var(--color-accent-soft)] bg-[var(--color-bg)] px-2 py-0.5 text-[13px] text-[var(--color-fg-dim)] hover:border-[var(--color-accent)] hover:text-[var(--color-fg)]"
               >
                 Reset to project defaults
               </button>
@@ -258,32 +246,41 @@ export function WorkspaceSandboxDialog() {
         )}
 
         <Field label="Extra writable paths" hint="One per line. $HOME and $WORKSPACE are substituted at spawn.">
-          <textarea
+          <BuiltInsLine>
+            workspace · <Mono>~/.claude</Mono> · <Mono>~/.gemini</Mono> · <Mono>~/.codex</Mono> · <Mono>~/.npm</Mono> · <Mono>~/.cache</Mono> · <Mono>~/.cargo/registry</Mono> · <Mono>~/Library/Caches</Mono> · <Mono>/private/tmp</Mono> · TMPDIR
+          </BuiltInsLine>
+          <AutoGrowTextarea
             value={rwText}
             onChange={e => setRwText(e.target.value)}
             rows={2}
             placeholder={"$HOME/.config/myproject\n/opt/homebrew/var/myproject"}
-            className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)] [field-sizing:content]"
+            className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)] [field-sizing:content]"
             disabled={!enabled}
           />
         </Field>
         <Field label="Extra denied paths" hint="On top of the built-in secret deny list.">
-          <textarea
+          <BuiltInsLine>
+            <Mono>~/.ssh</Mono> · <Mono>~/.aws</Mono> · <Mono>~/.gnupg</Mono> · <Mono>~/.netrc</Mono> · <Mono>~/.docker/config.json</Mono> · <Mono>~/.kube</Mono> · <Mono>~/.config/gh/hosts.yml</Mono> · macOS Keychains
+          </BuiltInsLine>
+          <AutoGrowTextarea
             value={denyText}
             onChange={e => setDenyText(e.target.value)}
             rows={2}
             placeholder="$HOME/private-notes"
-            className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)] [field-sizing:content]"
+            className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)] [field-sizing:content]"
             disabled={!enabled}
           />
         </Field>
-        <Field label="Extra allowed hosts" hint="POSIX regex, one per line.">
-          <textarea
+        <Field label="Extra allowed hosts" hint="One per line. Use * as a wildcard. Examples: *.mycompany.com, bitbucket.org">
+          <BuiltInsLine>
+            vendor API for {ws?.cli ?? "this CLI"} · github · npmjs · pypi · crates.io · CA OCSP
+          </BuiltInsLine>
+          <AutoGrowTextarea
             value={hostsText}
             onChange={e => setHostsText(e.target.value)}
             rows={2}
-            placeholder={"^.+\\.mycompany\\.com$\n^bitbucket\\.org$"}
-            className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)] [field-sizing:content]"
+            placeholder={"*.mycompany.com\nbitbucket.org"}
+            className="w-full resize-none rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)] [field-sizing:content]"
             disabled={!enabled}
           />
         </Field>
@@ -292,7 +289,7 @@ export function WorkspaceSandboxDialog() {
             by workspace path. Lazy-loaded on expand so we don't run
             `log show` (~200ms shell-out) on every dialog open. */}
         <details
-          className="rounded-md border border-[var(--color-border-soft)] bg-[var(--color-bg-1)]/50 px-3 py-2 text-[12.5px] text-[var(--color-fg-dim)]"
+          className="rounded-md border border-[var(--color-border-soft)] bg-[var(--color-bg-1)]/50 px-3 py-2 text-[13px] text-[var(--color-fg-dim)]"
           onToggle={(e) => {
             if ((e.target as HTMLDetailsElement).open && denies === null) loadDenies();
           }}
@@ -300,7 +297,7 @@ export function WorkspaceSandboxDialog() {
           <summary className="flex cursor-pointer select-none items-center gap-2 font-medium text-[var(--color-fg)]">
             Recent denies (last 15 min)
             {denies !== null && (
-              <span className="rounded-full bg-[var(--color-bg-3)] px-1.5 text-[11px] font-normal text-[var(--color-fg-dim)]">{denies.length}</span>
+              <span className="rounded-full bg-[var(--color-bg-3)] px-1.5 text-[13px] font-normal text-[var(--color-fg-dim)]">{denies.length}</span>
             )}
             <button
               type="button"
@@ -312,17 +309,17 @@ export function WorkspaceSandboxDialog() {
             </button>
           </summary>
           {denies === null && (
-            <div className="mt-2 text-[12px] text-[var(--color-fg-faint)]">
+            <div className="mt-2 text-[13px] text-[var(--color-fg-faint)]">
               Expand to fetch. Surfaces what the kernel sandbox blocked for this workspace; useful when npm/curl/etc silently fail.
             </div>
           )}
           {denies !== null && denies.length === 0 && (
-            <div className="mt-2 text-[12px] text-[var(--color-fg-faint)]">
+            <div className="mt-2 text-[13px] text-[var(--color-fg-faint)]">
               No denies in the last 15 minutes. Either the sandbox isn't blocking anything, or the agent hasn't tried anything blocked.
             </div>
           )}
           {denies !== null && denies.length > 0 && (
-            <pre data-selectable className="mt-2 max-h-[200px] overflow-auto rounded bg-[var(--color-bg)] p-2 font-mono text-[11px] leading-snug text-[var(--color-fg-dim)]">
+            <pre data-selectable className="mt-2 max-h-[200px] overflow-auto rounded bg-[var(--color-bg)] p-2 font-mono text-[13px] leading-snug text-[var(--color-fg-dim)]">
               {denies.join("\n")}
             </pre>
           )}
@@ -335,7 +332,7 @@ export function WorkspaceSandboxDialog() {
             reassuring yourself the cage actually closes, and for
             debugging "did I configure the proxy right?" */}
         {enabled && (
-          <div className="rounded-md border border-[var(--color-border-soft)] bg-[var(--color-bg-1)]/50 px-3 py-2 text-[12.5px]">
+          <div className="rounded-md border border-[var(--color-border-soft)] bg-[var(--color-bg-1)]/50 px-3 py-2 text-[13px]">
             <div className="flex items-center gap-2">
               <FlaskConical className="h-3.5 w-3.5 text-[var(--color-fg-dim)]" />
               <span className="font-medium text-[var(--color-fg)]">Test sandbox</span>
@@ -344,7 +341,7 @@ export function WorkspaceSandboxDialog() {
                 type="button"
                 onClick={runTest}
                 disabled={testBusy}
-                className="ml-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[12px] text-[var(--color-fg)] hover:border-[var(--color-accent-soft)] disabled:opacity-50"
+                className="ml-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[13px] text-[var(--color-fg)] hover:border-[var(--color-accent-soft)] disabled:opacity-50"
               >
                 {testBusy ? "Running…" : "Run"}
               </button>
@@ -357,10 +354,10 @@ export function WorkspaceSandboxDialog() {
                       ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-ok)]" />
                       : <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-err)]" />}
                     <span className="flex-1">
-                      <span className="font-mono text-[11.5px] text-[var(--color-fg-dim)]">{p.host}</span>
+                      <span className="font-mono text-[13px] text-[var(--color-fg-dim)]">{p.host}</span>
                       {" "}
                       <span className="text-[var(--color-fg-faint)]">→ {p.expected}</span>
-                      <span className="ml-2 text-[12px] text-[var(--color-fg-dim)]">{p.note}</span>
+                      <span className="ml-2 text-[13px] text-[var(--color-fg-dim)]">{p.note}</span>
                     </span>
                   </li>
                 ))}
@@ -371,7 +368,7 @@ export function WorkspaceSandboxDialog() {
 
         {/* Restart warning. Always visible (not error-state) so the
             user has it in view BEFORE they hit save. */}
-        <div className="flex items-start gap-2 rounded-md border border-[var(--color-warn)]/30 bg-[var(--color-warn)]/10 px-3 py-2 text-[12.5px] text-[var(--color-fg-dim)]">
+        <div className="flex items-start gap-2 rounded-md border border-[var(--color-warn)]/30 bg-[var(--color-warn)]/10 px-3 py-2 text-[13px] text-[var(--color-fg-dim)]">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-warn)]" />
           <span>
             Saving terminates any running agent in this workspace. The terminal
@@ -379,13 +376,17 @@ export function WorkspaceSandboxDialog() {
           </span>
         </div>
 
-        {err && <p className="text-[13.5px] text-[var(--color-err)]">{err}</p>}
+        {err && <p className="text-[13px] text-[var(--color-err)]">{err}</p>}
+        </div>
 
-        <div className="mt-2 flex justify-end gap-2">
+        {/* Sticky footer — sits outside the scroll container so the
+            Save button is always reachable no matter how long the form
+            gets after autogrow expands the textareas. */}
+        <div className="mt-3 flex shrink-0 justify-end gap-2 border-t border-[var(--color-border-soft)] pt-3">
           <Button variant="ghost" type="button" onClick={close} disabled={busy}>Cancel</Button>
           <Button variant="primary" type="button" onClick={save} disabled={busy} className="gap-1.5">
-            <Shield className="h-3.5 w-3.5" />
-            {busy ? "Saving…" : "Save & restart"}
+            <Shield className="h-3.5 w-3.5" fill="currentColor" />
+            {busy ? "Saving…" : "Save & restart terminal"}
           </Button>
         </div>
       </div>
@@ -393,11 +394,49 @@ export function WorkspaceSandboxDialog() {
   );
 }
 
+// Textarea that grows with its content. The CSS-only `field-sizing:
+// content` approach didn't take in this WKWebView build, so we fall
+// back to the JS recipe: collapse to auto, then size to scrollHeight
+// on every value change. `overflow-hidden` kills the temporary
+// scrollbar that would otherwise flicker during resize.
+function AutoGrowTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }, [props.value]);
+  return (
+    <textarea
+      ref={ref}
+      {...props}
+      style={{ overflow: "hidden", ...props.style }}
+    />
+  );
+}
+
+// Inline reminder of what's already covered by the built-in default
+// set for this field. Sits between the field's hint and its textarea
+// so users see "covered" stuff before they type something redundant.
+function BuiltInsLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-1.5 text-[12px] leading-snug text-[var(--color-fg-faint)]">
+      <span className="font-medium text-[var(--color-fg-dim)]">Already covered:</span>{" "}
+      {children}
+    </div>
+  );
+}
+
+function Mono({ children }: { children: React.ReactNode }) {
+  return <code className="font-mono text-[11.5px] text-[var(--color-fg-dim)]">{children}</code>;
+}
+
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[13.5px] font-medium">{label}</div>
-      {hint && <div className="mt-0.5 text-[12px] text-[var(--color-fg-dim)]">{hint}</div>}
+      <div className="text-[13px] font-medium">{label}</div>
+      {hint && <div className="mt-0.5 text-[13px] text-[var(--color-fg-dim)]">{hint}</div>}
       <div className="mt-2">{children}</div>
     </div>
   );
