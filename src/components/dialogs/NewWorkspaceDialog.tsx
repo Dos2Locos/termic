@@ -33,6 +33,14 @@ export function NewWorkspaceDialog() {
   // Sandbox pin captured at creation. Defaults from project, can be
   // overridden for this one workspace, then is permanent post-create.
   const [sandbox, setSandbox] = useState(false);
+  // The three per-workspace sandbox lists. Initialized from the
+  // project's defaults whenever projectId changes; the user edits
+  // freely until Create. Stored as multi-line text - we convert to
+  // arrays at submit time. Using raw text in state lets the textareas
+  // behave normally (blank lines while typing don't fight the split).
+  const [sbRw,    setSbRw]    = useState("");
+  const [sbDeny,  setSbDeny]  = useState("");
+  const [sbHosts, setSbHosts] = useState("");
   const [busy, setBusy] = useState(false);
   // Ref guard against double-submit. React batches setBusy(true) so the
   // button's `disabled` only updates on the next render — but during a
@@ -66,8 +74,14 @@ export function NewWorkspaceDialog() {
     setPrefix("feature");
     // Sandbox toggle defaults to whatever the project prefers. The
     // user can still flip it for THIS workspace - but once Create
-    // fires, the pin is permanent on the Workspace record.
+    // fires, the pin is permanent on the Workspace record. The
+    // three lists are seeded from the project's defaults; user
+    // edits in this dialog land on the workspace ONLY, never on
+    // the project.
     setSandbox(!!p?.default_sandbox);
+    setSbRw((p?.sandbox_rw_paths ?? []).join("\n"));
+    setSbDeny((p?.sandbox_deny_paths ?? []).join("\n"));
+    setSbHosts((p?.sandbox_allowed_hosts ?? []).join("\n"));
     setPhase("form"); setSetupLog([]); setCreatedWsId(null);
     // CRITICAL: also reset `busy`. On a successful prior creation we
     // intentionally leave busy=true (so the form can't be re-submitted
@@ -136,6 +150,10 @@ export function NewWorkspaceDialog() {
     });
     unlistenRef.current = [uOut, uDone];
     try {
+      // Snap textareas → string[]. Done at submit so blank lines
+      // during typing don't roundtrip through the array state.
+      const splitLines = (s: string) =>
+        s.split("\n").map(l => l.trim()).filter(Boolean);
       await workspaceCreate({
         id: wsId,
         project_id: projectId,
@@ -144,6 +162,11 @@ export function NewWorkspaceDialog() {
         base_branch: base.trim() || null,
         branch: branch.trim(),
         sandbox_enabled: sandbox,
+        // Only send lists when sandbox is on - keeps the JSON tidy
+        // for unsandboxed workspaces (they don't need these saved).
+        sandbox_rw_paths:       sandbox ? splitLines(sbRw)    : undefined,
+        sandbox_deny_paths:     sandbox ? splitLines(sbDeny)  : undefined,
+        sandbox_allowed_hosts:  sandbox ? splitLines(sbHosts) : undefined,
       });
       await loadAll();
       setPhase("setup");
@@ -234,9 +257,12 @@ export function NewWorkspaceDialog() {
           <Input value={base} onChange={e => setBase(e.target.value)} placeholder="origin/master" />
         </Field>
 
-        {/* Sandbox toggle. macOS-only feature; on other OSes it's a
-            no-op (Rust will spawn unsandboxed). The choice IS PERMANENT
-            once Create is clicked — to change, archive + recreate. */}
+        {/* Sandbox toggle + per-workspace overrides. Defaults seeded
+            from the project (Settings → Repositories); the user can
+            edit here for THIS workspace before clicking Create. Lists
+            are frozen onto the workspace at create time - the project
+            stays untouched, and the workspace's copies can't be edited
+            after creation (archive + recreate to change). */}
         <Field label="Sandbox" hint="Restrict filesystem writes + HTTPS to an allowlist. Pinned at creation - archive + recreate to change.">
           <label className="inline-flex cursor-pointer items-center gap-2 select-none">
             <input
@@ -246,10 +272,45 @@ export function NewWorkspaceDialog() {
               className="h-4 w-4 accent-[var(--color-accent)]"
             />
             <span className="text-[13px] text-[var(--color-fg-dim)]">
-              {sandbox ? "Sandboxed (seatbelt + per-project allowed hosts)" : "Unsandboxed (default)"}
+              {sandbox ? "Sandboxed (seatbelt + allowed hosts)" : "Unsandboxed (default)"}
             </span>
           </label>
         </Field>
+
+        {sandbox && (
+          <div className="ml-1 flex flex-col gap-4 rounded-md border border-[var(--color-border-soft)] bg-[var(--color-bg-1)]/40 p-3">
+            <div className="text-[11.5px] uppercase tracking-[0.1em] text-[var(--color-fg-faint)]">
+              Sandbox overrides for this workspace
+            </div>
+            <Field label="Writable paths" hint="One per line. $HOME and $WORKSPACE substituted. Workspace path + agent dirs + caches + TMPDIR are always allowed; these are extras.">
+              <textarea
+                value={sbRw}
+                onChange={e => setSbRw(e.target.value)}
+                rows={3}
+                placeholder={"$HOME/.config/myproject\n/opt/homebrew/var/myproject"}
+                className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)]"
+              />
+            </Field>
+            <Field label="Denied paths" hint="On top of the built-in secret deny list (~/.ssh, ~/.aws, ~/.gnupg, ~/.netrc, ~/.kube, Keychains, ...).">
+              <textarea
+                value={sbDeny}
+                onChange={e => setSbDeny(e.target.value)}
+                rows={2}
+                placeholder="$HOME/private-notes"
+                className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)]"
+              />
+            </Field>
+            <Field label="Allowed hosts" hint="POSIX regex, one per line. Per-CLI vendor + github + npm/pypi/crates are always allowed; these are extras.">
+              <textarea
+                value={sbHosts}
+                onChange={e => setSbHosts(e.target.value)}
+                rows={4}
+                placeholder={"^.+\\.mycompany\\.com$\n^bitbucket\\.org$"}
+                className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-mono text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-accent)]"
+              />
+            </Field>
+          </div>
+        )}
 
         {err && <p className="text-[13.5px] text-[var(--color-err)]">{err}</p>}
 

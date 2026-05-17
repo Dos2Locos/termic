@@ -60,6 +60,14 @@ export interface Workspace {
    *  it, archive the workspace and recreate. The UI shows a lock
    *  badge on sandboxed rows. */
   sandbox_enabled?: boolean;
+  /** Frozen-at-creation copies of the sandbox lists. The dialog seeds
+   *  these from the project's defaults, the user adds/removes before
+   *  Create, and from then on the workspace owns them. Editing the
+   *  project's defaults later WILL NOT reach back into existing
+   *  workspaces - matches the immutability promise of sandbox_enabled. */
+  sandbox_rw_paths?: string[];
+  sandbox_deny_paths?: string[];
+  sandbox_allowed_hosts?: string[];
 }
 
 export interface CreateWorkspaceArgs {
@@ -77,6 +85,12 @@ export interface CreateWorkspaceArgs {
    *  falls back to the project's `default_sandbox`. The pin is
    *  permanent - flip via archive + recreate, never via mutation. */
   sandbox_enabled?: boolean;
+  /** Per-workspace sandbox lists. The dialog seeds from the project's
+   *  defaults, the user edits, the final shape lands here. Unset =
+   *  Rust falls back to the project's defaults verbatim. */
+  sandbox_rw_paths?: string[];
+  sandbox_deny_paths?: string[];
+  sandbox_allowed_hosts?: string[];
 }
 
 export interface Agent {
