@@ -13,6 +13,7 @@ import { CliIcon, CLI_BRAND_COLOR } from "@/icons/cli";
 import { workspaceCreate } from "@/lib/ipc";
 import { slugify, cn } from "@/lib/utils";
 import { Check, Loader2, AlertTriangle } from "lucide-react";
+import { SANDBOX_PRESETS } from "@/lib/sandboxPresets";
 
 const CLIS = ["claude", "gemini", "codex"] as const;
 const PREFIXES = ["feature", "hotfix", "__custom__"] as const;
@@ -284,6 +285,23 @@ export function NewWorkspaceDialog() {
           <div className="ml-1 flex flex-col gap-4 rounded-md border border-[var(--color-border-soft)] bg-[var(--color-bg-1)]/40 p-3">
             <div className="text-[11.5px] uppercase tracking-[0.1em] text-[var(--color-fg-faint)]">
               Sandbox overrides for this workspace
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              <span className="text-[var(--color-fg-faint)]">Preset:</span>
+              {SANDBOX_PRESETS.map(p => (
+                <button
+                  key={p.id} type="button"
+                  title={p.hint}
+                  onClick={() => {
+                    setSbRw(p.rwPaths.join("\n"));
+                    setSbDeny(p.denyPaths.join("\n"));
+                    setSbHosts(p.allowedHosts.join("\n"));
+                  }}
+                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[12px] text-[var(--color-fg-dim)] hover:border-[var(--color-accent-soft)] hover:text-[var(--color-fg)]"
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
             <Field label="Writable paths" hint="One per line. $HOME and $WORKSPACE substituted. Workspace path + agent dirs + caches + TMPDIR are always allowed; these are extras.">
               <textarea

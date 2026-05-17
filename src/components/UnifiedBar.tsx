@@ -100,16 +100,46 @@ export function UnifiedBar() {
         {/* Theme picker — Radix dropdown opens on hover (and click).
             Three explicit options, never silently cycles. */}
         <ThemePicker themeMode={themeMode} setThemeMode={setThemeMode} Icon={ThemeIcon} />
-        <Tip content={yoloMode
-          ? "YOLO ON — auto-approve everything. Gemini updates live; claude/codex need a fresh tab."
-          : "YOLO OFF — agents will ask for approvals."} side="bottom">
-          <Button
-            size="icon" variant="icon" onClick={() => setYoloMode(!yoloMode)}
-            className={cn(yoloMode && "text-[var(--color-accent)] bg-[var(--color-accent-soft)]")}
-          >
-            <Zap className="h-[18px] w-[18px]" />
-          </Button>
-        </Tip>
+        {/* YOLO visualizes its safety state based on the active workspace's
+            sandbox pin:
+              - OFF                 → dim gray, neutral tooltip
+              - ON  + sandboxed     → green, "safe" tooltip (sandbox cages
+                                       any damage the agent could do)
+              - ON  + NOT sandboxed → red, DANGER tooltip - the agent
+                                       can rm -rf $HOME if it wants to
+            The visual difference between "green safe" and "red dangerous"
+            is the load-bearing UX: a casual glance has to communicate
+            "you are taking on real risk right now."
+
+            When sandbox is on we ALSO auto-pass YOLO at spawn even if
+            the toggle is off (sandbox is the real boundary), so the
+            toggle is informational in that case - it just affects
+            unsandboxed workspaces. */}
+        {(() => {
+          const sandboxed = !!ws?.sandbox_enabled;
+          const dangerous = yoloMode && !sandboxed;
+          const tipContent = dangerous
+            ? "⚠️ YOLO ON without a sandbox — agents auto-approve EVERY action, including writes outside the worktree, network calls, and shell commands. Click to disable or enable the workspace sandbox first."
+            : yoloMode && sandboxed
+              ? "YOLO ON — safe: this workspace is sandboxed, so auto-approval is bounded by the seatbelt profile."
+              : sandboxed
+                ? "YOLO OFF (but this workspace is sandboxed, so YOLO is auto-on for it anyway)."
+                : "YOLO OFF — agents will ask for approvals. Turn on per workspace once you've sandboxed it.";
+          return (
+            <Tip content={tipContent} side="bottom">
+              <Button
+                size="icon" variant="icon" onClick={() => setYoloMode(!yoloMode)}
+                className={cn(
+                  dangerous && "text-white bg-[var(--color-err)] hover:bg-[var(--color-err)]/80 ring-1 ring-[var(--color-err)] animate-pulse",
+                  yoloMode && sandboxed && "text-[var(--color-ok)] bg-[var(--color-ok)]/15",
+                  !yoloMode && sandboxed && "text-[var(--color-ok)] opacity-70",
+                )}
+              >
+                <Zap className="h-[18px] w-[18px]" />
+              </Button>
+            </Tip>
+          );
+        })()}
       </div>
 
       {/* Breadcrumbs / title — text doesn't select on drag (matches AppKit title bar). */}
