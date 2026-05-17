@@ -130,7 +130,7 @@ export function UnifiedBar() {
               <Button
                 size="icon" variant="icon" onClick={() => setYoloMode(!yoloMode)}
                 className={cn(
-                  dangerous && "text-white bg-[var(--color-err)] hover:bg-[var(--color-err)]/80 ring-1 ring-[var(--color-err)] animate-pulse",
+                  dangerous && "text-white bg-[var(--color-err)] hover:bg-[var(--color-err)]/80 ring-1 ring-[var(--color-err)]",
                   yoloMode && sandboxed && "text-[var(--color-ok)] bg-[var(--color-ok)]/15",
                   !yoloMode && sandboxed && "text-[var(--color-ok)] opacity-70",
                 )}
