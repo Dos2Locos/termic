@@ -119,6 +119,17 @@ pub struct Workspace {
     /// archive and recreate with the toggle off (or vice versa).
     #[serde(default)]
     pub sandbox_enabled: bool,
+    /// Frozen-at-creation copies of the sandbox lists. Seeded from the
+    /// project's defaults in `workspace_create`, but the workspace owns
+    /// them from then on - editing the project later doesn't reach back
+    /// into existing workspaces. Spawning reads THESE, never the
+    /// project's arrays.
+    #[serde(default)]
+    pub sandbox_rw_paths: Vec<String>,
+    #[serde(default)]
+    pub sandbox_deny_paths: Vec<String>,
+    #[serde(default)]
+    pub sandbox_allowed_hosts: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -142,6 +153,16 @@ pub struct CreateWorkspaceArgs {
     /// (`Project.default_sandbox`) wins.
     #[serde(default)]
     pub sandbox_enabled: Option<bool>,
+    /// Optional overrides for the per-workspace sandbox lists. The
+    /// dialog seeds them from the project's defaults, lets the user
+    /// add/remove, then sends the final shape here. Unset → fall
+    /// back to the project's default arrays.
+    #[serde(default)]
+    pub sandbox_rw_paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub sandbox_deny_paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub sandbox_allowed_hosts: Option<Vec<String>>,
 }
 
 // ───────────────────────────── paths ─────────────────────────────
@@ -318,25 +339,16 @@ fn pty_spawn(
         .and_then(|wid| load_workspaces().into_iter().find(|w| w.id == wid))
         .filter(|w| w.sandbox_enabled)
     {
-        Some(ws) => {
-            // Resolve the workspace's project so we can pick up extra
-            // RW/deny paths + allowed hosts. If the project's gone the
-            // safest fall-back is "sandbox with built-in defaults only."
-            let proj = load_projects()
-                .into_iter()
-                .find(|p| p.id == ws.project_id)
-                .unwrap_or_default();
-            match sandbox::provision(&ws, &proj) {
-                Ok(bundle) => {
-                    let (c, a) = sandbox::wrap_command(&bundle, &args.cmd, &args.args);
-                    (c, a, Some(bundle))
-                }
-                Err(e) => {
-                    eprintln!("[pty_spawn] sandbox provision failed, spawning unsandboxed: {e}");
-                    (args.cmd.clone(), args.args.clone(), None)
-                }
+        Some(ws) => match sandbox::provision(&ws) {
+            Ok(bundle) => {
+                let (c, a) = sandbox::wrap_command(&bundle, &args.cmd, &args.args);
+                (c, a, Some(bundle))
             }
-        }
+            Err(e) => {
+                eprintln!("[pty_spawn] sandbox provision failed, spawning unsandboxed: {e}");
+                (args.cmd.clone(), args.args.clone(), None)
+            }
+        },
         None => (args.cmd.clone(), args.args.clone(), None),
     };
 
@@ -624,6 +636,9 @@ fn workspace_open_repo(project_id: String, cli: Option<String>) -> Result<Worksp
         // and sandbox-fenced edits there would be more surprising than
         // helpful. Sandboxing always rides on a fresh worktree.
         sandbox_enabled: false,
+        sandbox_rw_paths: Vec::new(),
+        sandbox_deny_paths: Vec::new(),
+        sandbox_allowed_hosts: Vec::new(),
     };
     save_workspace(&ws).map_err(|e| e.to_string())?;
     Ok(ws)
@@ -723,6 +738,14 @@ fn workspace_create_sync(app: AppHandle, args: CreateWorkspaceArgs) -> Result<Wo
     // This is the ONLY place sandbox_enabled gets written. No setter
     // anywhere - by design.
     let sandbox_enabled = args.sandbox_enabled.unwrap_or(proj.default_sandbox);
+    // Sandbox lists are frozen at creation. The dialog seeds them
+    // from the project's defaults (the user may have added/removed
+    // before clicking Create); whatever it sends is what we store.
+    // If the dialog sends None we fall back to the project's
+    // defaults verbatim - same effective outcome.
+    let sandbox_rw_paths = args.sandbox_rw_paths.unwrap_or_else(|| proj.sandbox_rw_paths.clone());
+    let sandbox_deny_paths = args.sandbox_deny_paths.unwrap_or_else(|| proj.sandbox_deny_paths.clone());
+    let sandbox_allowed_hosts = args.sandbox_allowed_hosts.unwrap_or_else(|| proj.sandbox_allowed_hosts.clone());
     let ws = Workspace {
         id: args.id.unwrap_or_else(|| Uuid::new_v4().to_string()),
         project_id: proj.id.clone(),
@@ -738,6 +761,9 @@ fn workspace_create_sync(app: AppHandle, args: CreateWorkspaceArgs) -> Result<Wo
         spawn_count: 0,
         has_resumable_history: false,
         sandbox_enabled,
+        sandbox_rw_paths,
+        sandbox_deny_paths,
+        sandbox_allowed_hosts,
     };
     save_workspace(&ws).map_err(|e| e.to_string())?;
 
