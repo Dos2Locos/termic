@@ -218,8 +218,23 @@ export function UnifiedBar() {
             <Tip content="Archive workspace" side="bottom">
               <Button size="icon" variant="icon"
                 onClick={async () => {
-                  if (!confirm(`Archive workspace "${ws.name}"? The worktree will be removed from git.`)) return;
-                  try { await workspaceArchive(ws.id); setActive(null); await loadAll(); } catch (e) { console.error(e); }
+                  const ok = await useUI.getState().askConfirm({
+                    title: `Archive "${ws.name}"?`,
+                    // Repo-root entries aren't worktrees - archiving
+                    // drops the Termic row only; the project checkout
+                    // on disk is untouched and can be re-opened later.
+                    message: ws.is_repo_root
+                      ? "This removes the Termic entry for the project's main checkout. The repo on disk is NOT touched — you can re-open it any time. Any agent running here will be terminated."
+                      : "The git worktree will be removed and any running agent terminated. This can't be undone from inside Termic — the branch survives in git but the local worktree directory and its contents (node_modules, .venv, untracked files) are gone.",
+                    confirmLabel: ws.is_repo_root ? "Remove entry" : "Archive",
+                    destructive: true,
+                  });
+                  if (!ok) return;
+                  try {
+                    useUI.getState().setBusy(`Archiving "${ws.name}"…`);
+                    await workspaceArchive(ws.id); setActive(null); await loadAll();
+                  } catch (e) { console.error(e); }
+                  finally { useUI.getState().setBusy(null); }
                 }}
               ><Archive className="h-4 w-4" /></Button>
             </Tip>

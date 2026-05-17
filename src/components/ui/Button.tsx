@@ -7,7 +7,7 @@ const button = cva(
   {
     variants: {
       variant: {
-        primary: "bg-[var(--color-accent)] text-white hover:brightness-110 border border-[var(--color-accent)]",
+        primary: "bg-[var(--color-accent-deep)] text-white hover:brightness-110 border border-[var(--color-accent-deep)]",
         secondary: "bg-[var(--color-bg-2)] text-[var(--color-fg)] hover:border-[var(--color-accent-soft)] border border-[var(--color-border)]",
         ghost: "text-[var(--color-fg-dim)] hover:bg-[var(--color-hover)] hover:text-[var(--color-fg)]",
         icon: "text-[var(--color-fg-dim)] hover:bg-[var(--color-hover)] hover:text-[var(--color-fg)] rounded-md",
