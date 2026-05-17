@@ -196,7 +196,7 @@ const THEME_ITEMS: { id: ThemeMode; label: string; icon: typeof Sun; swatch: [st
   { id: "light",     label: "Light",          icon: Sun,     swatch: ["#faf9f6", "#1c1b1a", "#c25e3d"] },
   { id: "dark",      label: "Dark",           icon: Moon,    swatch: ["#0a0a0a", "#f0efed", "#d97757"] },
   { id: "solarized", label: "Solarized Dark", icon: Sunrise, swatch: ["#002b36", "#93a1a1", "#cb4b16"] },
-  { id: "cobalt",    label: "Cobalt",         icon: Droplet, swatch: ["#193549", "#e1efff", "#ffc600"] },
+  { id: "cobalt",    label: "Cobalt",         icon: Droplet, swatch: ["#193549", "#e1efff", "#66c4ff"] },
   { id: "matrix",    label: "Matrix",         icon: Binary,  swatch: ["#000800", "#00ff41", "#00ff41"] },
 ];
 function StepTheme() {
@@ -241,7 +241,7 @@ function StepTheme() {
                   {t.id === "light" && "cream + terracotta"}
                   {t.id === "dark" && "warm near-black"}
                   {t.id === "solarized" && "Schoonover palette"}
-                  {t.id === "cobalt" && "navy + yellow"}
+                  {t.id === "cobalt" && "deep navy + sky blue"}
                   {t.id === "matrix" && "phosphor green CRT"}
                 </span>
               </div>
