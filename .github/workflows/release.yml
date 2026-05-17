@@ -1,16 +1,15 @@
 name: Release
 
-# Push a tag like `v0.3.1` (driven by `just release patch|minor|major`).
-# This builds the macOS bundle, ad-hoc codesigns it, signs the updater
-# package with our ed25519 key, uploads everything to a GitHub
-# Release, then bumps two downstream repos:
-#   * simion/homebrew-termic     (Casks/termic.rb gets version + sha256)
-#   * simion/termic.dev          (public/updates/latest.json gets the
-#                                 new manifest)
+# Push a tag like `v0.3.1` (driven by `make release BUMP=patch|minor|major`).
+# Two parallel Mac builds (Apple Silicon on macos-14, Intel on macos-13),
+# both ad-hoc codesigned and ed25519-signed for the updater. The release
+# job stitches both arches into one GitHub Release; downstream jobs bump:
+#   * simion/homebrew-termic     (Casks/termic.rb gets version + BOTH shas)
+#   * simion/termic.dev          (public/updates/latest.json gets BOTH platforms)
 #
-# Brew users see the new version on `brew upgrade`; running Termic
-# instances see the in-app updater pill within 5 min (CF Pages cache
-# TTL on the manifest).
+# Brew users see the new version on `brew upgrade --cask`; running
+# Termic instances on either arch see the in-app updater pill within
+# ~5 min (CF Pages cache TTL on the manifest).
 
 on:
   push:
@@ -28,11 +27,11 @@ env:
 
 jobs:
   # Cheap fast-fail: type-check the frontend on Ubuntu (~1 min) before
-  # spinning up the ~5-min macos-14 build. Catches the broken-import /
-  # bad-prop class of errors that bit v0.1.1, without paying for a Mac
-  # runner. Cargo errors still get caught later by `tauri build` in
-  # build-mac since cross-compiling the Rust side from Linux needs
-  # the macOS SDK; not worth the setup.
+  # spinning up the ~5-min Mac runners on both arches. Catches the
+  # broken-import / bad-prop class of errors that bit v0.1.1, without
+  # paying for either Mac runner. Cargo errors get caught later by
+  # `tauri build` in build-* since cross-compiling the Rust side from
+  # Linux needs the macOS SDK; not worth the setup.
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -44,44 +43,38 @@ jobs:
       - run: npm ci
       - run: npx tsc -b
 
-  build-mac:
+  # ─── Apple Silicon (arm64) ─────────────────────────────────────────
+  # Two arches kept as two explicit jobs (rather than a matrix) so
+  # downstream `needs.<job>.outputs.<x>` works per-arch; matrix outputs
+  # in GHA can't be addressed by row, which makes the release job ugly.
+  build-arm:
     needs: validate
-    # Apple Silicon runners produce arm64 bundles. Add a separate
-    # `macos-13` (x86_64) matrix entry when we want Intel coverage.
     runs-on: macos-14
     outputs:
       version:   ${{ steps.meta.outputs.version }}
       dmg_name:  ${{ steps.meta.outputs.dmg_name }}
-      # SHA + sig live on the `hashes` step (not `meta`); the previous
-      # release shipped empty values into the cask + manifest because
-      # this block referenced the wrong step id.
       dmg_sha:   ${{ steps.hashes.outputs.dmg_sha }}
       sig:       ${{ steps.hashes.outputs.sig }}
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Resolve version from tag
+      - name: Resolve version + arch-tagged names
         id: meta
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # Tauri lower-cases the productName for the .dmg filename.
-          # Don't assume capitalization - APFS made local checks lie
-          # because the FS is case-insensitive; GitHub Releases URLs
-          # are case-SENSITIVE so the cask must reference exactly
-          # what Tauri produced.
+          # APFS hid case mismatches locally; GitHub Releases URLs are
+          # case-SENSITIVE so the cask MUST reference exactly what
+          # Tauri produced. The .app.tar.gz on the other hand IS
+          # arch-suffixed by us in the rename step below (Tauri emits
+          # the same `termic.app.tar.gz` name on both arches, so we
+          # disambiguate before upload).
           echo "dmg_name=termic_${VERSION}_aarch64.dmg" >> "$GITHUB_OUTPUT"
-
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
+        with: { node-version: '20', cache: 'npm' }
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
-
       - name: Cache Rust target dir
         uses: actions/cache@v4
         with:
@@ -89,26 +82,15 @@ jobs:
             src-tauri/target
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-
-      - name: Install deps
-        run: npm ci
-
+          key: cargo-${{ runner.os }}-arm-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - run: npm ci
       - name: Build & sign
         env:
-          # ed25519 key for updater package signature. Generated once
-          # via `npx tauri signer generate`; private key + password
-          # live in repo Secrets.
           TAURI_SIGNING_PRIVATE_KEY:          ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Ad-hoc codesign (free; doesn't satisfy Gatekeeper but
-          # silences dyld on newer macOS). The Homebrew cask strips
-          # quarantine on install so users don't see Gatekeeper
-          # prompts; in-app updates skip Gatekeeper entirely.
           APPLE_SIGNING_IDENTITY: '-'
         run: npm run tauri build -- --target aarch64-apple-darwin
-
-      - name: Compute SHA256 + read .sig
+      - name: Compute SHA256 + read .sig + arch-suffix .app.tar.gz
         id: hashes
         run: |
           BUNDLE_DIR=src-tauri/target/aarch64-apple-darwin/release/bundle
@@ -116,64 +98,129 @@ jobs:
           ls -la "$DMG"
           SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
           echo "dmg_sha=$SHA" >> "$GITHUB_OUTPUT"
-          SIG_FILE=$(find "$BUNDLE_DIR/macos" -name '*.app.tar.gz.sig' | head -1)
-          SIG=$(cat "$SIG_FILE")
-          # Multi-line outputs need the heredoc syntax.
-          {
-            echo 'sig<<EOF'
-            echo "$SIG"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          # Tauri emits termic.app.tar.gz on both arches - we'd clobber
+          # the intel one when we co-upload to a single Release. Rename
+          # here so both can coexist as termic_aarch64.app.tar.gz and
+          # termic_x64.app.tar.gz; the updater manifest references the
+          # arch-suffixed URLs accordingly.
+          mv "$BUNDLE_DIR/macos/termic.app.tar.gz"     "$BUNDLE_DIR/macos/termic_aarch64.app.tar.gz"
+          mv "$BUNDLE_DIR/macos/termic.app.tar.gz.sig" "$BUNDLE_DIR/macos/termic_aarch64.app.tar.gz.sig"
+          SIG=$(cat "$BUNDLE_DIR/macos/termic_aarch64.app.tar.gz.sig")
+          { echo 'sig<<EOF'; echo "$SIG"; echo 'EOF'; } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
         with:
           name: termic-${{ steps.meta.outputs.version }}-aarch64
           path: |
             src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/termic_aarch64.app.tar.gz
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/termic_aarch64.app.tar.gz.sig
 
+  # ─── Intel (x86_64) ────────────────────────────────────────────────
+  # macos-13 is the last Intel runner GitHub provides; their roadmap
+  # has it on indefinite support (no announced sunset as of 2026-05).
+  # If/when it's retired, options are: (a) drop Intel, (b) self-host
+  # an Intel runner, (c) cross-compile from arm + lipo. We'll cross
+  # that bridge when GitHub announces a date.
+  build-intel:
+    needs: validate
+    runs-on: macos-13
+    outputs:
+      dmg_name:  ${{ steps.meta.outputs.dmg_name }}
+      dmg_sha:   ${{ steps.hashes.outputs.dmg_sha }}
+      sig:       ${{ steps.hashes.outputs.sig }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve arch-tagged names
+        id: meta
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          # Tauri uses `x64` (not `x86_64`) in the dmg filename for
+          # Intel macOS bundles. Verified against a local intel build;
+          # don't change without re-checking what Tauri actually emits.
+          echo "dmg_name=termic_${VERSION}_x64.dmg" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - name: Cache Rust target dir
+        uses: actions/cache@v4
+        with:
+          path: |
+            src-tauri/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-intel-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - run: npm ci
+      - name: Build & sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY:          ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: '-'
+        run: npm run tauri build -- --target x86_64-apple-darwin
+      - name: Compute SHA256 + read .sig + arch-suffix .app.tar.gz
+        id: hashes
+        run: |
+          BUNDLE_DIR=src-tauri/target/x86_64-apple-darwin/release/bundle
+          DMG="$BUNDLE_DIR/dmg/${{ steps.meta.outputs.dmg_name }}"
+          ls -la "$DMG"
+          SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
+          echo "dmg_sha=$SHA" >> "$GITHUB_OUTPUT"
+          mv "$BUNDLE_DIR/macos/termic.app.tar.gz"     "$BUNDLE_DIR/macos/termic_x64.app.tar.gz"
+          mv "$BUNDLE_DIR/macos/termic.app.tar.gz.sig" "$BUNDLE_DIR/macos/termic_x64.app.tar.gz.sig"
+          SIG=$(cat "$BUNDLE_DIR/macos/termic_x64.app.tar.gz.sig")
+          { echo 'sig<<EOF'; echo "$SIG"; echo 'EOF'; } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: termic-${{ needs.build-arm.outputs.version }}-x64
+          path: |
+            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/termic_x64.app.tar.gz
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/termic_x64.app.tar.gz.sig
+
+  # ─── Stitch both arches into one Release ───────────────────────────
   release:
-    needs: build-mac
+    needs: [build-arm, build-intel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: termic-${{ needs.build-mac.outputs.version }}-aarch64
-          path: artifacts
-
+          name: termic-${{ needs.build-arm.outputs.version }}-aarch64
+          path: arm
+      - uses: actions/download-artifact@v4
+        with:
+          name: termic-${{ needs.build-arm.outputs.version }}-x64
+          path: intel
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.build-mac.outputs.version }}
+          VERSION: ${{ needs.build-arm.outputs.version }}
         run: |
-          # Notes body is the first thing direct-download users see -
-          # they need the install path + the Gatekeeper bypass right
-          # there, otherwise they download a .dmg, drag it, click it,
-          # hit 'termic is damaged' on macOS 15, and give up. The
-          # recommended brew path goes first because it sidesteps
-          # quarantine entirely; the manual xattr command is the
-          # escape hatch for non-brew users.
+          # Notes body is the first thing direct-download users see.
+          # The recommended brew path goes first because it picks the
+          # right arch automatically AND sidesteps quarantine; the
+          # xattr command is the escape hatch for non-brew users on
+          # either arch.
           NOTES=$(cat <<EOF
           ## Install
 
-          **Recommended — Homebrew** (handles tinyproxy dependency + Gatekeeper bypass for you):
+          **Recommended — Homebrew** (auto-selects the right arch + handles Gatekeeper):
 
           \`\`\`sh
           brew install --cask simion/termic/termic
           \`\`\`
 
-          **Direct .dmg** — download \`termic_${VERSION}_aarch64.dmg\` below, drag to /Applications, then:
+          **Direct .dmg** — pick the one matching your Mac:
+
+          - Apple Silicon (M1/M2/M3/M4): \`termic_${VERSION}_aarch64.dmg\`
+          - Intel: \`termic_${VERSION}_x64.dmg\`
+
+          Drag to /Applications, then strip the quarantine flag so macOS
+          Gatekeeper lets it launch (you'd otherwise see _"termic can't be
+          opened because Apple cannot check it for malicious software"_):
 
           \`\`\`sh
-          # macOS Gatekeeper blocks unsigned apps. Strip the quarantine attribute
-          # to allow first launch (you'd otherwise see 'termic can't be opened
-          # because Apple cannot check it for malicious software').
           xattr -dr com.apple.quarantine /Applications/termic.app
-
-          # Network sandbox needs tinyproxy. Skip if you don't enable sandboxing.
-          brew install tinyproxy
           \`\`\`
 
           ## Updates
@@ -191,30 +238,31 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "v${VERSION}" \
             --notes "$NOTES" \
-            artifacts/dmg/*.dmg \
-            artifacts/macos/*.app.tar.gz \
-            artifacts/macos/*.app.tar.gz.sig
+            arm/dmg/*.dmg arm/macos/* \
+            intel/dmg/*.dmg intel/macos/*
 
+  # ─── Bump the Homebrew cask ────────────────────────────────────────
   bump-tap:
-    needs: [build-mac, release]
+    needs: [build-arm, build-intel, release]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout tap
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: ${{ env.TAP_REPO }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
-
-      - name: Bump cask
+      - name: Bump cask (version + per-arch sha256)
         run: |
           cd tap
-          VERSION="${{ needs.build-mac.outputs.version }}"
-          SHA="${{ needs.build-mac.outputs.dmg_sha }}"
-          # Replace the version line + sha256 line in Casks/termic.rb.
-          # Using `|` as the sed delimiter so embedded URLs don't clash.
+          VERSION="${{ needs.build-arm.outputs.version }}"
+          ARM_SHA="${{ needs.build-arm.outputs.dmg_sha }}"
+          INTEL_SHA="${{ needs.build-intel.outputs.dmg_sha }}"
+          # The cask uses trailing `# @sha-arm` / `# @sha-intel` anchors
+          # so sed can target each sha256 line independently regardless
+          # of surrounding context. Don't remove those comments.
           sed -i.bak -E "s|^  version \".*\"|  version \"$VERSION\"|" Casks/termic.rb
-          sed -i.bak -E "s|^  sha256 .*|  sha256 \"$SHA\"|" Casks/termic.rb
+          sed -i.bak -E "/@sha-arm/s|sha256 \"[^\"]+\"|sha256 \"$ARM_SHA\"|"     Casks/termic.rb
+          sed -i.bak -E "/@sha-intel/s|sha256 \"[^\"]+\"|sha256 \"$INTEL_SHA\"|" Casks/termic.rb
           rm Casks/termic.rb.bak
           git config user.name  "termic-bot"
           git config user.email "termic-bot@users.noreply.github.com"
@@ -222,27 +270,32 @@ jobs:
           git commit -m "termic $VERSION"
           git push
 
+  # ─── Bump the updater manifest (both platforms) ────────────────────
   bump-website:
-    needs: [build-mac, release]
+    needs: [build-arm, build-intel, release]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout website
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: ${{ env.WEBSITE_REPO }}
           token: ${{ secrets.WEBSITE_REPO_TOKEN }}
           path: site
-
       - name: Write update manifest
         run: |
           cd site
-          VERSION="${{ needs.build-mac.outputs.version }}"
-          SIG=$(cat <<'EOF'
-          ${{ needs.build-mac.outputs.sig }}
+          VERSION="${{ needs.build-arm.outputs.version }}"
+          ARM_SIG=$(cat <<'EOF'
+          ${{ needs.build-arm.outputs.sig }}
           EOF
           )
-          # Write the manifest. tauri-plugin-updater reads:
-          #   { version, notes, pub_date, platforms.darwin-aarch64.{signature,url} }
+          INTEL_SIG=$(cat <<'EOF'
+          ${{ needs.build-intel.outputs.sig }}
+          EOF
+          )
+          # tauri-plugin-updater dispatches on `darwin-aarch64` vs
+          # `darwin-x86_64`; both URLs point at the arch-suffixed
+          # .app.tar.gz we uploaded in the release job.
+          BASE="https://github.com/${{ github.repository }}/releases/download/v$VERSION"
           cat > "${{ env.WEBSITE_MANIFEST_PATH }}" <<JSON
           {
             "version": "$VERSION",
@@ -250,8 +303,12 @@ jobs:
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "platforms": {
               "darwin-aarch64": {
-                "signature": "$SIG",
-                "url": "https://github.com/${{ github.repository }}/releases/download/v$VERSION/termic.app.tar.gz"
+                "signature": "$ARM_SIG",
+                "url": "$BASE/termic_aarch64.app.tar.gz"
+              },
+              "darwin-x86_64": {
+                "signature": "$INTEL_SIG",
+                "url": "$BASE/termic_x64.app.tar.gz"
               }
             }
           }
