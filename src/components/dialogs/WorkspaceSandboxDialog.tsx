@@ -10,7 +10,8 @@ import { useApp } from "@/store/app";
 import { AppDialog } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { workspaceSetSandbox } from "@/lib/ipc";
-import { AlertTriangle, Shield } from "lucide-react";
+import { AlertTriangle, Shield, Zap } from "lucide-react";
+import { SANDBOX_PRESETS } from "@/lib/sandboxPresets";
 
 export function WorkspaceSandboxDialog() {
   const wsId = useUI(s => s.sandboxForWsId);
@@ -98,6 +99,21 @@ export function WorkspaceSandboxDialog() {
           </span>
         </label>
 
+        {/* YOLO trade-off note. Sandboxed agents auto-skip their own
+            permission prompts because the seatbelt is the real boundary -
+            users should know this is happening, not stumble onto it. */}
+        {enabled && (
+          <div className="flex items-start gap-2 rounded-md border border-[var(--color-ok)]/25 bg-[var(--color-ok)]/10 px-3 py-2 text-[12.5px] text-[var(--color-fg-dim)]">
+            <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-ok)]" />
+            <span>
+              <b className="text-[var(--color-fg)]">YOLO auto-on inside the cage.</b>{" "}
+              The agent's own permission prompts are skipped because the
+              seatbelt profile is the real boundary. The global YOLO toggle
+              becomes informational for this workspace.
+            </span>
+          </div>
+        )}
+
         {/* Built-in defaults summary. Helps the user understand they
             don't have to list every common thing - workspace path,
             agent dirs, github, npm, etc. are already on. */}
@@ -120,6 +136,28 @@ export function WorkspaceSandboxDialog() {
             </div>
           </div>
         </details>
+
+        {/* Presets - clobber the three textareas with a known-good
+            starting point. User can still edit afterwards. */}
+        {enabled && (
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="text-[var(--color-fg-faint)]">Preset:</span>
+            {SANDBOX_PRESETS.map(p => (
+              <button
+                key={p.id} type="button"
+                title={p.hint}
+                onClick={() => {
+                  setRwText(p.rwPaths.join("\n"));
+                  setDenyText(p.denyPaths.join("\n"));
+                  setHostsText(p.allowedHosts.join("\n"));
+                }}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[12px] text-[var(--color-fg-dim)] hover:border-[var(--color-accent-soft)] hover:text-[var(--color-fg)]"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <Field label="Extra writable paths" hint="One per line. $HOME and $WORKSPACE are substituted at spawn.">
           <textarea

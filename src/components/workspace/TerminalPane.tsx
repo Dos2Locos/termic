@@ -164,7 +164,13 @@ export function TerminalPane({ ws, tab, active }: Props) {
           // changes. Falls back to `tab.cli` for unknown ids.
           cmd: spawnCommandForCli(tab.cli),
           args: spawnArgsForCli(tab.cli, {
-            yolo: usePrefs.getState().yoloMode,
+            // YOLO auto-on whenever the workspace is sandboxed: the
+            // seatbelt cage is the real security boundary, so the
+            // agent's own permission-prompt scaffolding is just
+            // friction. The user pref still wins when sandbox is off,
+            // and the wizard / sandbox dialog spell this out so
+            // nobody is surprised.
+            yolo: usePrefs.getState().yoloMode || !!ws.sandbox_enabled,
             resume: shouldResume,
             ws,
           }),
