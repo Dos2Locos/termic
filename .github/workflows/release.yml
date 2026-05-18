@@ -127,8 +127,6 @@ jobs:
     if: false
     needs: validate
     runs-on: macos-13
-    needs: validate
-    runs-on: macos-13
     outputs:
       dmg_name:  ${{ steps.meta.outputs.dmg_name }}
       dmg_sha:   ${{ steps.hashes.outputs.dmg_sha }}
