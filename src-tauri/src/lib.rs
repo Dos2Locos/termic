@@ -1544,6 +1544,31 @@ fn workspace_create_multi_sync(app: AppHandle, args: CreateMultiArgs) -> Result<
         eprintln!("multi-repo gitignore write failed (non-fatal): {e}");
     }
 
+    // Auto-commit the wrapper's bookkeeping files (CLAUDE.md /
+    // AGENTS.md / .gitignore / agent dirs) so they don't show up as
+    // ?? noise in the Changes view. The user is here to work on
+    // member code, not stare at config files Termic itself dropped.
+    // Best-effort — non-fatal if `git add` finds nothing to add or
+    // the commit fails (e.g. no user.email globally configured;
+    // -c overrides handle that path).
+    {
+        let bookkeeping = ["CLAUDE.md", "AGENTS.md", ".gitignore", ".claude", ".gemini", ".codex"];
+        let mut to_add: Vec<&str> = Vec::new();
+        for f in &bookkeeping {
+            if wrapper.join(f).exists() { to_add.push(*f); }
+        }
+        if !to_add.is_empty() {
+            let mut add_args: Vec<&str> = vec!["add", "--"];
+            add_args.extend(&to_add);
+            let _ = git(&add_args, &wrapper);
+            let _ = git(
+                &["-c", "user.email=termic@local", "-c", "user.name=Termic",
+                  "commit", "-q", "-m", "termic: workspace bookkeeping"],
+                &wrapper,
+            );
+        }
+    }
+
     // Sandbox: same union/merge logic as single-repo create, but the
     // base set unions across every member project too.
     let globals = load_settings_inner();
