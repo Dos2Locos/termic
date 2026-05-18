@@ -113,6 +113,20 @@ export function AuxTerminal({ wsPath, active, onExited }: { wsPath: string; acti
     };
   }, [wsPath, gen]);
 
+  // ⌘K clear handler — fires only when this aux terminal owns
+  // focus. Cheap to subscribe per-instance; the dispatch is rare.
+  useEffect(() => {
+    const onClear = () => {
+      const host = hostRef.current;
+      const focused = document.activeElement as HTMLElement | null;
+      if (host && focused && host.contains(focused)) {
+        try { termRef.current?.clear(); } catch {}
+      }
+    };
+    window.addEventListener("termic-clear-focused", onClear);
+    return () => window.removeEventListener("termic-clear-focused", onClear);
+  }, []);
+
   useEffect(() => {
     // Re-fit on becoming active, but DO NOT steal focus — focus belongs to
     // the main agent terminal on workspace switch. Stealing it here meant

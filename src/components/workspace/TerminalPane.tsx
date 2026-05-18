@@ -337,6 +337,19 @@ export function TerminalPane({ ws, tab, active }: Props) {
   }, [active, isActiveWorkspace]);
 
   // Live-react to font / size preference changes: rewrite the options and
+  // ⌘K clear handler — see AuxTerminal for context.
+  useEffect(() => {
+    const onClear = () => {
+      const host = hostRef.current;
+      const focused = document.activeElement as HTMLElement | null;
+      if (host && focused && host.contains(focused)) {
+        try { termRef.current?.clear(); } catch {}
+      }
+    };
+    window.addEventListener("termic-clear-focused", onClear);
+    return () => window.removeEventListener("termic-clear-focused", onClear);
+  }, []);
+
   // refit so the cell grid recomputes against the new metrics. Skips the
   // initial run since the constructor already used the current values.
   const terminalFontId     = usePrefs(s => s.terminalFontId);

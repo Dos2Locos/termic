@@ -158,6 +158,20 @@ export function useShortcuts() {
         }
       }
 
+      // ⌘K → clear the focused terminal (xterm `clear()`). Dispatched
+      // as a window CustomEvent; each Terminal instance listens and
+      // self-checks `document.activeElement` against its own host
+      // before clearing. NO `isTyping` guard — same xterm hidden-
+      // textarea reason as ⇧⌘D / ⌘T.
+      if (e.key.toLowerCase() === "k" && !e.shiftKey) {
+        const inTerm = !!(document.activeElement as HTMLElement | null)?.closest?.(".xterm");
+        if (inTerm) {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("termic-clear-focused"));
+          return;
+        }
+      }
+
       if (e.key.toLowerCase() === "w") {
         if (isTyping) return;
         // ALWAYS preventDefault when we're in a workspace, even if
