@@ -2644,11 +2644,12 @@ fn workspace_dir_list(id: String, rel: String) -> Result<Vec<FileEntry>, String>
         // user wants to browse in the file tree.
         if name == ".git" { continue; }
         // file_type() reports a symlink-to-dir as Symlink, not Dir, which would
-        // make member symlinks (repo_root mode) render as files. Fall back to
-        // metadata() (which follows symlinks) when the entry is a symlink.
+        // make member symlinks (repo_root mode) render as files. DirEntry::
+        // metadata() also DOES NOT traverse symlinks, so fall back to
+        // std::fs::metadata(path) which DOES follow.
         let ft = e.file_type();
         let is_dir = match ft {
-            Ok(t) if t.is_symlink() => e.metadata().map(|m| m.is_dir()).unwrap_or(false),
+            Ok(t) if t.is_symlink() => fs::metadata(e.path()).map(|m| m.is_dir()).unwrap_or(false),
             Ok(t) => t.is_dir(),
             Err(_) => false,
         };
