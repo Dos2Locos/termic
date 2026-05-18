@@ -443,7 +443,14 @@ export function Sidebar() {
                             ASLEEP layers extra opacity drop. */}
                         <span className={cn(
                           "shrink-0 transition-colors",
-                          unread
+                          // Work-done is its own row-level visual (green
+                          // check after the label). Brand-coloring the
+                          // CLI icon on top would be a second cue for
+                          // the same thing — keep the icon calm and let
+                          // the check carry the signal. Brand color is
+                          // reserved for "louder" unread reasons (bell,
+                          // exit) where the green check doesn't apply.
+                          unread && !workDone
                             ? (CLI_BRAND_COLOR[w.cli] || "text-[var(--color-fg)]")
                             : activeWs === w.id
                               ? "text-[var(--color-fg)]"
