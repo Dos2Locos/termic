@@ -3,6 +3,12 @@
 Thanks for considering it. Termic is a small project with a clear scope —
 contributions that fit the [philosophy](#philosophy) are welcome.
 
+> **Contributor License Agreement.** By opening a pull request you agree
+> to the terms in [CLA.md](./CLA.md). It's a standard inbound-CLA that
+> lets the project relicense in the future (e.g. dual-license a paid
+> edition) without having to track down every past contributor. Your
+> existing contributions stay AGPL-3.0 regardless.
+
 ## Quick start
 
 ```sh
