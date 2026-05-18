@@ -116,12 +116,17 @@ jobs:
             src-tauri/target/aarch64-apple-darwin/release/bundle/macos/termic_aarch64.app.tar.gz.sig
 
   # ─── Intel (x86_64) ────────────────────────────────────────────────
-  # macos-13 is the last Intel runner GitHub provides; their roadmap
-  # has it on indefinite support (no announced sunset as of 2026-05).
-  # If/when it's retired, options are: (a) drop Intel, (b) self-host
-  # an Intel runner, (c) cross-compile from arm + lipo. We'll cross
-  # that bridge when GitHub announces a date.
-  build-intel:
+  # DISABLED for now: GitHub's macos-13 (Intel) runner fleet has been
+  # routinely queue-stuck 15-45+ min, blocking releases on a single
+  # arch nobody has yet asked for. Re-enable when either (a) the
+  # runner queue clears up, (b) we self-host an Intel runner, or
+  # (c) we wire cross-compilation from the arm runner via
+  # `--target x86_64-apple-darwin` + lipo. The downstream `release`,
+  # `bump-tap`, and `bump-website` jobs now only need `build-arm`.
+  build-intel-disabled:
+    if: false
+    needs: validate
+    runs-on: macos-13
     needs: validate
     runs-on: macos-13
     outputs:
@@ -178,44 +183,38 @@ jobs:
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/termic_x64.app.tar.gz
             src-tauri/target/x86_64-apple-darwin/release/bundle/macos/termic_x64.app.tar.gz.sig
 
-  # ─── Stitch both arches into one Release ───────────────────────────
+  # ─── Stitch the arm build into a Release ───────────────────────────
   release:
-    needs: [build-arm, build-intel]
+    needs: build-arm
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: termic-${{ needs.build-arm.outputs.version }}-aarch64
           path: arm
-      - uses: actions/download-artifact@v4
-        with:
-          name: termic-${{ needs.build-arm.outputs.version }}-x64
-          path: intel
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.build-arm.outputs.version }}
         run: |
           # Notes body is the first thing direct-download users see.
-          # The recommended brew path goes first because it picks the
-          # right arch automatically AND sidesteps quarantine; the
-          # xattr command is the escape hatch for non-brew users on
-          # either arch.
+          # The recommended brew path goes first because it sidesteps
+          # quarantine; the xattr command is the escape hatch for
+          # non-brew users.
           NOTES=$(cat <<EOF
           ## Install
 
-          **Recommended — Homebrew** (auto-selects the right arch + handles Gatekeeper):
+          **Apple Silicon (M1/M2/M3/M4) only** for now. Intel support is paused
+          until GitHub's macos-13 runner queue clears; will return in a follow-up.
+
+          **Recommended — Homebrew** (handles Gatekeeper for you):
 
           \`\`\`sh
           brew install --cask simion/termic/termic
           \`\`\`
 
-          **Direct .dmg** — pick the one matching your Mac:
-
-          - Apple Silicon (M1/M2/M3/M4): \`termic_${VERSION}_aarch64.dmg\`
-          - Intel: \`termic_${VERSION}_x64.dmg\`
-
-          Drag to /Applications, then strip the quarantine flag so macOS
+          **Direct .dmg** — download \`termic_${VERSION}_aarch64.dmg\` below,
+          drag to /Applications, then strip the quarantine flag so macOS
           Gatekeeper lets it launch (you'd otherwise see _"termic can't be
           opened because Apple cannot check it for malicious software"_):
 
@@ -238,12 +237,11 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "v${VERSION}" \
             --notes "$NOTES" \
-            arm/dmg/*.dmg arm/macos/* \
-            intel/dmg/*.dmg intel/macos/*
+            arm/dmg/*.dmg arm/macos/*
 
   # ─── Bump the Homebrew cask ────────────────────────────────────────
   bump-tap:
-    needs: [build-arm, build-intel, release]
+    needs: [build-arm, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -251,18 +249,17 @@ jobs:
           repository: ${{ env.TAP_REPO }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
-      - name: Bump cask (version + per-arch sha256)
+      - name: Bump cask (version + arm sha256)
         run: |
           cd tap
           VERSION="${{ needs.build-arm.outputs.version }}"
           ARM_SHA="${{ needs.build-arm.outputs.dmg_sha }}"
-          INTEL_SHA="${{ needs.build-intel.outputs.dmg_sha }}"
-          # The cask uses trailing `# @sha-arm` / `# @sha-intel` anchors
-          # so sed can target each sha256 line independently regardless
-          # of surrounding context. Don't remove those comments.
+          # The arm-only cask has a single top-level `sha256` with the
+          # `# @sha-arm` anchor; the @sha-intel sed is gone while Intel
+          # builds are disabled. Re-add the dual-arch sed when build-
+          # intel comes back.
           sed -i.bak -E "s|^  version \".*\"|  version \"$VERSION\"|" Casks/termic.rb
           sed -i.bak -E "/@sha-arm/s|sha256 \"[^\"]+\"|sha256 \"$ARM_SHA\"|"     Casks/termic.rb
-          sed -i.bak -E "/@sha-intel/s|sha256 \"[^\"]+\"|sha256 \"$INTEL_SHA\"|" Casks/termic.rb
           rm Casks/termic.rb.bak
           git config user.name  "termic-bot"
           git config user.email "termic-bot@users.noreply.github.com"
@@ -270,9 +267,9 @@ jobs:
           git commit -m "termic $VERSION"
           git push
 
-  # ─── Bump the updater manifest (both platforms) ────────────────────
+  # ─── Bump the updater manifest (arm only for now) ──────────────────
   bump-website:
-    needs: [build-arm, build-intel, release]
+    needs: [build-arm, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -288,13 +285,11 @@ jobs:
           ${{ needs.build-arm.outputs.sig }}
           EOF
           )
-          INTEL_SIG=$(cat <<'EOF'
-          ${{ needs.build-intel.outputs.sig }}
-          EOF
-          )
-          # tauri-plugin-updater dispatches on `darwin-aarch64` vs
-          # `darwin-x86_64`; both URLs point at the arch-suffixed
-          # .app.tar.gz we uploaded in the release job.
+          # tauri-plugin-updater dispatches on `darwin-aarch64`. Until
+          # Intel builds are re-enabled there's no `darwin-x86_64`
+          # block, so any Intel user running the old binary will not
+          # see an update notification (they wouldn't be able to install
+          # this version anyway).
           BASE="https://github.com/${{ github.repository }}/releases/download/v$VERSION"
           cat > "${{ env.WEBSITE_MANIFEST_PATH }}" <<JSON
           {
@@ -305,10 +300,6 @@ jobs:
               "darwin-aarch64": {
                 "signature": "$ARM_SIG",
                 "url": "$BASE/termic_aarch64.app.tar.gz"
-              },
-              "darwin-x86_64": {
-                "signature": "$INTEL_SIG",
-                "url": "$BASE/termic_x64.app.tar.gz"
               }
             }
           }
