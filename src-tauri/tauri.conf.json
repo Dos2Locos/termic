@@ -14,8 +14,8 @@
     "windows": [
       {
         "title": "Termic",
-        "width": 1400,
-        "height": 900,
+        "width": 1500,
+        "height": 1000,
         "minWidth": 900,
         "minHeight": 600,
         "titleBarStyle": "Overlay",
