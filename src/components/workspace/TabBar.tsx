@@ -6,7 +6,7 @@ import { useApp, useWorkspaceTabs, useActiveTabId } from "@/store/app";
 import { Button } from "@/components/ui/Button";
 import { DropdownRoot, DropdownTrigger, DropdownMenu, DropdownItem, DropdownLabel } from "@/components/ui/Dropdown";
 import { CliIcon, CLI_BRAND_COLOR } from "@/icons/cli";
-import { Plus, X, GitCompare, FileText, SquareSplitVertical } from "lucide-react";
+import { Plus, X, GitCompare, FileText, SquareSplitVertical, Check, Bell } from "lucide-react";
 import { Tip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 
@@ -107,6 +107,14 @@ function TabPill({ ws: _ws, tab, active, onSelect, onClose, renaming, onStartRen
   onCancelRename: () => void;
 }) {
   const isUnread = !!tab.unread;
+  // Sender-driven status icon on the tab itself. Replaces the old
+  // brown unread dot — too generic, no signal about WHY the tab is
+  // unread. Now: green ✓ when the agent finished a turn; yellow 🔔
+  // when the agent is blocked on the user. BEL / exit reasons fall
+  // through to no badge (the tab's own contents already explain).
+  const reason = tab.unread?.reason;
+  const showCheck = reason === "done" || reason === "idle";
+  const showBell  = reason === "attention";
   const color = tab.type === "terminal" ? CLI_BRAND_COLOR[tab.cli] : "text-[var(--color-fg-dim)]";
   const isRenaming = renaming !== null;
   return (
@@ -125,7 +133,16 @@ function TabPill({ ws: _ws, tab, active, onSelect, onClose, renaming, onStartRen
           : "border-transparent text-[var(--color-fg-dim)] hover:bg-[var(--color-hover)] hover:text-[var(--color-fg)]",
       )}
     >
-      {isUnread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-accent)]" />}
+      {showBell && (
+        <span className="shrink-0 text-[var(--color-warn)]" title="Agent needs your input">
+          <Bell className="h-3.5 w-3.5" strokeWidth={2.5} />
+        </span>
+      )}
+      {showCheck && !showBell && (
+        <span className="shrink-0 text-[var(--color-ok)]" title="Agent finished a turn">
+          <Check className="h-4 w-4" strokeWidth={3} />
+        </span>
+      )}
       <span className={cn("shrink-0", color)}>
         {tab.type === "terminal" && <CliIcon cli={tab.cli} className="h-4 w-4" />}
         {tab.type === "edit"     && <FileText className="h-4 w-4" />}
