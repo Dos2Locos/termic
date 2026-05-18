@@ -141,7 +141,7 @@ export function AgentsSection() {
             <RotateCcw className="h-3.5 w-3.5" /> Reset built-ins
           </Button>
           <Button variant="secondary" size="sm" onClick={addAgent}>
-            <Plus className="h-3.5 w-3.5" /> Add agent
+            <Plus className="h-3.5 w-3.5" /> Add agent CLI
           </Button>
         </div>
       </div>
