@@ -450,7 +450,12 @@ export function Sidebar() {
                               : "text-[var(--color-fg-faint)]",
                           asleep && "opacity-50",
                         )}>
-                          <CliIcon cli={w.cli} className={iconSize(compact)} />
+                          {/* Workspace-row CLI icon is one step smaller
+                              than the nav-rail icons (h-4 vs h-[18px])
+                              so it doesn't dominate the label next to
+                              compact 13px row text. Compact mode keeps
+                              the bigger 24px since the icon IS the row. */}
+                          <CliIcon cli={w.cli} className={compact ? "h-6 w-6" : "h-4 w-4"} />
                         </span>
                         {!compact && (
                           isRenaming ? (
