@@ -232,14 +232,14 @@ export function UnifiedBar() {
                     if (!ok) return;
                     try {
                       const r = await workspaceSendDiffToMain(ws.id);
-                      await useUI.getState().askConfirm({
-                        title: "Sent to main checkout",
-                        message:
-                          `Tracked file diffs applied: ${r.tracked_files}\n` +
-                          `Untracked files copied: ${r.untracked_files}`,
-                        confirmLabel: "OK",
-                        cancelLabel: "",
-                      });
+                      // Build a compact, human-readable summary. Quietly
+                      // omit the zero halves so it reads as a result, not
+                      // a checklist of nothings-happened.
+                      const parts: string[] = [];
+                      if (r.tracked_files)   parts.push(`${r.tracked_files} tracked diff${r.tracked_files === 1 ? "" : "s"} applied`);
+                      if (r.untracked_files) parts.push(`${r.untracked_files} untracked file${r.untracked_files === 1 ? "" : "s"} copied`);
+                      const summary = parts.length ? parts.join(", ") : "no changes to send";
+                      useUI.getState().pushToast(`Sent to main checkout — ${summary}`, "success");
                     } catch (e) {
                       await useUI.getState().askConfirm({
                         title: "Send to main failed",
