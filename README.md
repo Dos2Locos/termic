@@ -134,17 +134,29 @@ Pro / Max subscription.
 The product surface:
 
 - **One window, many workspaces.** Each workspace is a git worktree under
-  `~/termic/workspaces/<project>/<name>/`, branched off your default. Tabs
-  per workspace let you run multiple agents against the same branch.
+  `~/termic/workspaces/<project>/<name>/`, branched off your default.
+  Tabs per workspace let you run multiple agents against the same branch.
+  Worktree-or-repo-root toggle per workspace when you don't want a worktree.
+- **Multi-repo workspaces.** A project type that groups N member repos under
+  one wrapper directory with shared `CLAUDE.md` / `AGENTS.md` / `.claude/`,
+  per-member ports (`$TERMIC_PORT_<MEMBER>` is exported so frontends can call
+  backends without hardcoded ports), and one aggregated diff view.
 - **Real PTYs.** Agents render in xterm.js + WebGL exactly as they would
   in your shell: animations, slash-commands, `/resume` pickers, bell, bold.
-- **Diff + edit in-app.** Built-in CodeMirror 6 editor + git-diff-vs-HEAD
-  viewer per workspace. "Send to main" pushes the worktree's diff into the
-  parent checkout for you to commit / PR there.
+- **Work-done indicator.** Sender-driven, no idle heuristics: Claude's
+  `OSC 9;4` busy/idle, Gemini's `◇ Ready` / `✦ Working…` / `✋ Action Required`
+  title, Codex's `Working` / `Ready` / `Waiting` title. Green ✓ on the tab
+  when a turn finishes, yellow 🔔 when the agent is blocked on your input,
+  optional desktop notification that jumps you back to that workspace + tab.
+- **Diff + edit in-app.** CodeMirror 6 editor + side-by-side ⇄ unified diff
+  viewer with full syntax highlighting via `@codemirror/merge`. "Send to
+  main" pushes the worktree's diff into the parent checkout for you to
+  commit / PR there.
 - **Per-CLI configuration.** Settings → Agents is a small editable registry:
-  override the binary path, args, YOLO flags, runtime YOLO command. Claude,
-  Gemini, Codex are the defaults; add your own.
-- **Seven themes** (System / Light / Dark / Solarized Dark / Cobalt 2 /
+  override the binary path, args, YOLO flags, runtime YOLO command, resume
+  args. Claude, Gemini, Codex are built in; bring your own PTY-based CLI
+  (OpenCode, aider, ollama, custom shell scripts) in 30 seconds.
+- **Seven themes** (System / Light / Dark / VS Code / Solarized / Cobalt /
   Matrix), each one re-themes both the app chrome AND the xterm pane.
 
 ---
@@ -191,17 +203,28 @@ and the auto-restart-on-edit flow — see [CLAUDE.md](./CLAUDE.md)
 
 ---
 
-## Why use Termic over Conductor / Cursor / Cline?
+## Why use Termic over Conductor
 
-The honest pitch:
+The honest pitch — see [termic.dev/vs/conductor](https://termic.dev/vs/conductor/) for the full version with explanations.
 
-| | Termic | Conductor / Mux / etc. |
+| | Termic | Conductor |
 |---|---|---|
-| **Bills against** | your existing Pro/Max | the new $200 credit pool (varies by plan) |
-| **Underlying engine** | spawns the real CLI in a PTY | wraps the Claude Agent SDK |
-| **License** | AGPL-3.0, open source | mostly proprietary |
-| **New CLI features** | available the day the CLI ships them | wait for the SDK + wrapper to catch up |
-| **Sandbox** | optional, per-workspace, kernel-enforced | varies |
+| License | Open source (AGPL-3.0) | Closed source, proprietary |
+| Price | Free | Paid |
+| Parallel agents in git worktrees | ✓ | ✓ |
+| Attach an agent to the repo root (no worktree) | ✓ | ✗ (worktree per workspace only) |
+| Runs `claude` | ✓ | ✓ |
+| Runs `gemini` | ✓ | ✗ |
+| Runs `codex` | ✓ | ✓ |
+| Bring your own agent (PTY-based) | ✓ — opencode, aider, ollama, anything that runs in a terminal | ✗ |
+| Multi-repo workspaces | ✓ — N repos under one wrapper, shared CLAUDE.md, per-member ports | ✗ |
+| Uses Claude Pro / Max subscription quota | ✓ — spawns the interactive `claude` CLI directly | ◐ Routes through the Claude Agent SDK |
+| Monthly Claude cost on top of your Pro / Max plan | $0 — same quota as running `claude` in iTerm | Capped by the separate SDK credit ($20 / $100 / $200) |
+| Local-only, no vendor backend in the loop | ✓ | ✗ — vendor-hosted services |
+| Per-workspace macOS sandbox (filesystem + network) | ✓ — Seatbelt + in-process network allowlist | ✗ |
+| Work-done indicator from real PTY signals | ✓ — OSC 9;4 + per-CLI title classifier, no idle guessing | ✗ |
+| Side-by-side ⇄ unified diff with syntax highlighting | ✓ | varies |
+| Platforms | macOS today; Linux + Windows on the way | macOS |
 
 If you already pay for a Claude Pro / Max plan, Termic spawns the same
 `claude` binary that plan covers — no separate metered usage, no
